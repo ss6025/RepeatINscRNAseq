@@ -1,0 +1,18 @@
+# download gtf from repeatMasker and GENCODE first
+
+
+# extracting coding entries in gtf & convert to bed file
+awk '$3=="exon"{match($9,/gene_id "([^"]+)"/,a); print $1, $4-1, $5, a[1], ".", $7}' OFS="\t" gencode.gtf > cd_exon.bed
+# convert repeat.gtf to bed
+grep -v "_rich_" repeat.gtf > repeat_filtered.gtf
+
+awk '{match($9,/gene_id "([^"]+)"/,a); print $1, $4-1, $5, a[1], ".", $7}' OFS="\t" repeat_filtered.gtf > repeat.bed
+
+# remove repeat entries overlapping with exon
+bedtools subtract -a repeat.bed -b cd_exon.bed > repeats_no_exon_overlap.bed
+
+# convert bed to gtf
+awk 'BEGIN{OFS="\t"} {print $1,"rmsk","exon",$2+1,$3,".","+",".","gene_id \""$4"\"; transcript_id \""$4"\";"}' repeats_no_exon_overlap.bed > repeats_clean.gtf
+
+# merge coding and repeat
+cat coding_exons.gtf repeats_clean.gtf > combined_cleaned.gtf

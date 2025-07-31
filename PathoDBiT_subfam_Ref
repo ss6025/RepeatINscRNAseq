@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --job-name=STARsolo
+#SBATCH --partition=componc_cpu  # Adjust based on your HPC
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --output=./logs/STARsolo_%A_%a.out
+#SBATCH --error=./logs/STARsolo_%A_%a.err
+
+# Increase the number of allowed open files
+ulimit -n 8192
+
+# Load STAR module (adjust as needed)
+module load rna-seq/4.1.0
+#module load STAR/2.7.11b
+
+#source activate star_solo_env
+
+# Read sample name from sample.csv (Extract first column)
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" ./sra_ids.txt | awk -F',' '{print $1}')
+#NAME=$(sed -n "${SLURM_ARRAY_TASK_ID}p" sample.csv | awk -F',' '{print $2}')
+
+# Set paths
+GENOME_DIR="/data1/greenbab/database/STARsolo_index/hg38/combined_index"  # STAR genome index path
+WHITE_LIST="/data1/greenbab/users/suns3/spatialTotalRNA/ref/Spatial_barcode_50x50_clean.txt"
+OUTPUT_DIR="/data1/greenbab/users/suns3/spatialTotalRNA/STARsolo_output"  # STARsolo output directory
+FASTQ_DIR="/data1/greenbab/users/suns3/spatialTotalRNA/raw"  # Directory for barcode FASTQs
+
+## echo "$GENOMIC_DIR" | cat -A
+
+# Define input FASTQ files
+barcode=${FASTQ_DIR}"/"${SAMPLE}"_2.fastq"
+cDNA=${FASTQ_DIR}"/"${SAMPLE}"_1.fastq"
+
+singularity exec --no-home --bind /data1/greenbab \
+    /data1/greenbab/software/images/rnaseq-sasha/rnaseq-4.1.0.sif \
+    STAR --runThreadN 64 \
+    --genomeDir ${GENOME_DIR} \
+    --readFilesIn ${cDNA} ${barcode} \
+    --soloType CB_UMI_Simple \
+    --soloCBstart 1 --soloCBlen 16 \
+    --soloUMIstart 17 --soloUMIlen 10 \
+    --soloCBwhitelist ${WHITE_LIST} \
+    --soloFeatures Gene \
+    --soloMultiMappers EM \
+    --outFilterMultimapNmax 100 \
+    --winAnchorMultimapNmax 100 \
+    --outSAMmultNmax 1 \
+    --outMultimapperOrder Random \
+    --soloUMIdedup Exact \
+    --soloStrand Forward \
+    --outFileNamePrefix ${OUTPUT_DIR}/${SAMPLE}_ \
+    --outSAMtype BAM SortedByCoordinate \
+    --outSAMattributes CR UR CY UY CB UB NH HI
+
+# Clean up any stale _STARtmp directories
+rm -rf ${OUTPUT_DIR}/${SAMPLE}__STARtmp/

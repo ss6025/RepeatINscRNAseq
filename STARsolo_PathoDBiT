@@ -1,0 +1,64 @@
+!/bin/bash                                                                     
+#SBATCH --job-name=STARsoloCombined                                             
+#SBATCH --partition=componc_cpu  # Adjust based on your HPC                     
+#SBATCH --time=24:00:00                                                         
+#SBATCH --cpus-per-task=8                                                       
+#SBATCH --mem=128G                                                              
+#SBATCH --output=./Combined_output_noEM/logSTAR/STARsolo_%A_%a.out              
+#SBATCH --error=./Combined_output_noEM/logSTAR/STARsolo_%A_%a.err               
+
+# Increase the number of allowed open files                                     
+ulimit -n 8192
+
+# Load STAR module (adjust as needed)                                           
+#module load rna-seq/4.1.0                                                      
+#module load STAR/2.7.11b                                                       
+
+#source activate star_solo_env                                                  
+
+# Read sample name from sample.csv (Extract first column)                       
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" ./sra_ids.txt | awk -F',' '{print $1}\
+')
+#NAME=$(sed -n "${SLURM_ARRAY_TASK_ID}p" sample.csv | awk -F',' '{print $2}')   
+
+# Set paths                                                                     
+GENOME_DIR="/data1/greenbab/database/STARsolo_index/hg38/combined_index"  # STA\
+R genome index path                                                             
+if [[ "$SAMPLE" == "SRR30216220" || "$SAMPLE" == "SRR32966849" ]]; then
+    WHITE_LIST="/data1/greenbab/users/nij2/ref/Spatial_barcode_100x100_clean.tx\
+t"
+else
+    WHITE_LIST="/data1/greenbab/users/nij2/ref/Spatial_barcode_50x50_clean.txt"
+fi
+OUTPUT_DIR="/data1/greenbab/users/nij2/Combined_output_noEM"  # STARsolo output\
+ directory                                                                      
+FASTQ_DIR="/data1/greenbab/users/nij2/sra_fastqs"  # Directory for barcode FAST\
+Qs                                                                              
+
+## echo "$GENOMIC_DIR" | cat -A                                                 
+
+# Define input FASTQ files                                                      
+barcode=${FASTQ_DIR}"/"${SAMPLE}"_2.fastq"
+cDNA=${FASTQ_DIR}"/"${SAMPLE}"_1.fastq"
+
+singularity exec --no-home --bind /data1/greenbab \
+    /data1/greenbab/software/images/rnaseq-sasha/rnaseq-4.1.0.sif \
+    STAR --runThreadN 64 \
+    --genomeDir ${GENOME_DIR} \
+    --readFilesIn ${cDNA} ${barcode} \
+    --soloType CB_UMI_Simple \
+    --soloCBstart 1 --soloCBlen 16 \
+    --soloUMIstart 17 --soloUMIlen 10 \
+    --soloCBwhitelist ${WHITE_LIST} \
+    --winAnchorMultimapNmax 200 \
+    --soloFeatures GeneFull \
+    --outFilterMultimapNmax 50 \
+    --soloUMIdedup Exact \
+    --outFileNamePrefix ${OUTPUT_DIR}/${SAMPLE}_ \
+    --outSAMtype BAM SortedByCoordinate \
+    --outSAMattributes CR UR CY UY CB UB NH HI
+
+# Clean up any stale _STARtmp directories                                       
+rm -rf ${OUTPUT_DIR}/${SAMPLE}__STARtmp/
+
+

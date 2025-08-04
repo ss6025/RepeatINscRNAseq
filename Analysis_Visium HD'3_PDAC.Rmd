@@ -1,0 +1,962 @@
+## PDAC combined locus level index + EM + GeneFull + aggregated result
+
+```{r}
+
+#BiocManager::install("SingleCellSignalR")
+#library(SingleR)
+#remotes::install_github("cvarrichio/Matrix.utils")
+#install.packages("~/R/library-ood-4.0.4/Matrix_1.6-5.tgz", repos = NULL, type = .Platform$pkgType)
+#install.packages("~/R/Matrix_1.6-4.tar.gz", repos = NULL, type="source")
+library("Matrix")
+#if (!require("BiocManager", quietly = TRUE)) 
+#  install.packages("BiocManager") 
+#BiocManager::install(version = "3.14")
+library("BiocManager")
+#BiocManager::install("SeuratObject")
+library(ggrepel)
+library(dplyr)
+library(tidyverse)
+library(patchwork)
+library(ggplot2)
+#library(DropletUtils)
+library("stringr")
+library("harmony")
+library(RColorBrewer)
+library(Matrix)
+library(SeuratObject)
+library(Seurat)
+library(data.table)
+#BiocManager::install("DropletUtils")
+library("SeuratObject")
+#BiocManager::install("Seurat") 
+library("Seurat")
+
+
+#BiocManager::install("DropletUtils")
+```
+
+##after running Step0_filtering_integration_repCDsep.Rmd
+```{r}
+load("rdata/pdac/PDAC_EMGeneFull_filtNorm.RData")
+
+#data.filt_normed = FindVariableFeatures(data.filt_normed, verbose = F)
+## scale the data
+combined = ScaleData(combined, vars.to.regress = c("nFeature_RNA", "percent.mt"), verbose = F)
+## PCA
+combined = RunPCA(combined, verbose = F, npcs = 20)
+combined = RunUMAP(combined, dims = 1:10, verbose = F)
+# Examine and visualize PCA results a few different ways
+print(combined[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(combined, dims = 1:2, reduction = "pca")
+
+```
+
+##add sample info to metadata
+```{r}
+merged_seurat = combined
+# Extract the SRR part from orig.ident
+
+cond_map <- c(
+"SRR30218424"= "Pt13_female_Peritoneal metastasis_FOLFIRINOX\\, Capecitabine\\, gemcitabine/abraxane/ denosumab",
+"SRR30218425"= "Pt13_female_Peritoneal metastasis_FOLFIRINOX\\, Capecitabine\\, gemcitabine/abraxane/ denosumab",
+"SRR30218426"= "Pt13_female_Lung metastasis_FOLFIRINOX\\, Capecitabine\\, gemcitabine/abraxane/ denosumab",
+"SRR30218427"= "Pt13_female_Liver metastasis_FOLFIRINOX\\, Capecitabine\\, gemcitabine/abraxane/ denosumab",
+"SRR30218428"= "Pt13_female_Primary PDAC_FOLFIRINOX\\, Capecitabine\\, gemcitabine/abraxane/ denosumab",
+"SRR30218429"= "Pt12_female_Peritoneal metastasis_gemcitabine",
+"SRR30218430"= "Pt12_female_Lung metastasis_gemcitabine",
+"SRR30218431"= "Pt12_female_Liver metastasis_gemcitabine",
+"SRR30218432"= "Pt12_female_Primary PDAC_gemcitabine",
+"SRR30218433"= "Pt11_male_Peritoneal metastasis_gemcitabine\\, Oxaliplatin\\, leucovorin-modulated 5-FU\\, irinotecan\\",
+"SRR30218434"= "Pt11_male_Lung metastasis_gemcitabine\\, Oxaliplatin\\, leucovorin-modulated 5-FU\\, irinotecan\\",
+"SRR30218435"= "Pt11_male_Liver metastasis_gemcitabine\\, Oxaliplatin\\, leucovorin-modulated 5-FU\\, irinotecan\\",
+"SRR30218436"= "Pt11_male_Primary PDAC_gemcitabine\\, Oxaliplatin\\, leucovorin-modulated 5-FU\\, irinotecan\\",
+"SRR30218437"= "Pt10_male_Peritoneal metastasis_FOLFIRINOX\\, carboplatin/FOLFOX\\, gemcitabine/abraxane",
+"SRR30218438"= "Pt10_male_Lung metastasis_FOLFIRINOX\\, carboplatin/FOLFOX\\, gemcitabine/abraxane",
+"SRR30218439"= "Pt10_male_Liver metastasis_FOLFIRINOX\\, carboplatin/FOLFOX\\, gemcitabine/abraxane",
+"SRR30218440"= "Pt10_male_Primary PDAC_FOLFIRINOX\\, carboplatin/FOLFOX\\, gemcitabine/abraxane",
+"SRR30218441"= "Pt9_female_Peritoneal metastasis_Cisplatin\\, gemcitabine\\, ADH-1\\, 5-FU (Clinical trial)",
+"SRR30218442"= "Pt9_female_Liver metastasis_Cisplatin\\, gemcitabine\\, ADH-1\\, 5-FU (Clinical trial)",
+"SRR30218443"= "Pt9_female_Liver metastasis_Cisplatin\\, gemcitabine\\, ADH-1\\, 5-FU (Clinical trial)",
+"SRR30218444"= "Pt9_female_Primary PDAC_Cisplatin\\, gemcitabine\\, ADH-1\\, 5-FU (Clinical trial)",
+"SRR30218445"= "Pt8_male_Peritoneal metastasis_FOLFIRINOX\\, FOLFIRI\\, Abraxane/Gemcitabine",
+"SRR30218446"= "Pt8_male_Liver metastasis_FOLFIRINOX\\, FOLFIRI\\, Abraxane/Gemcitabine",
+"SRR30218447"= "Pt8_male_Liver metastasis_FOLFIRINOX\\, FOLFIRI\\, Abraxane/Gemcitabine",
+"SRR30218448"= "Pt8_male_Primary PDAC_FOLFIRINOX\\, FOLFIRI\\, Abraxane/Gemcitabine",
+"SRR30218449"= "Pt7_male_Peritoneal metastasis_gemcitabine\\, ADH1\\, cisplatin",
+"SRR30218450"= "Pt7_male_Liver metastasis_gemcitabine\\, ADH1\\, cisplatin",
+"SRR30218451"= "Pt7_male_Liver metastasis_gemcitabine\\, ADH1\\, cisplatin",
+"SRR30218452"= "Pt7_male_Primary PDAC_gemcitabine\\, ADH1\\, cisplatin",
+"SRR30218453"= "Pt6_male_Peritoneal metastasis_gemcitabine\\, AVN944\\, erlotinib",
+"SRR30218454"= "Pt6_male_Peritoneal metastasis_gemcitabine\\, AVN944\\, erlotinib",
+"SRR30218455"= "Pt6_male_Liver metastasis_gemcitabine\\, AVN944\\, erlotinib",
+"SRR30218456"= "Pt6_male_Primary PDAC_gemcitabine\\, AVN944\\, erlotinib",
+"SRR30218457"= "Pt5_female_Liver metastasis_No treatment",
+"SRR30218458"= "Pt5_female_Liver metastasis_No treatment",
+"SRR30218459"= "Pt5_female_Primary PDAC_No treatment",
+"SRR30218460"= "Pt4_female_Peritoneal metastasis_No treatment",
+"SRR30218461"= "Pt4_female_Lung metastasis_No treatment",
+"SRR30218462"= "Pt4_female_Liver metastasis_No treatment",
+"SRR30218463"= "Pt4_female_Primary PDAC_No treatment",
+"SRR30218464"= "Pt3_female_Peritoneal metastasis_No treatment",
+"SRR30218465"= "Pt3_female_Liver metastasis_No treatment",
+"SRR30218466"= "Pt3_female_Primary PDAC_No treatment",
+"SRR30218467"= "Pt2_female_Peritoneal metastasis_No treatment",
+"SRR30218468"= "Pt2_female_Lung metastasis_No treatment",
+"SRR30218469"= "Pt2_female_Primary PDAC_No treatment",
+"SRR30218470"= "Pt1_female_Peritoneal metastasis_No treatment",
+"SRR30218471"= "Pt1_female_Liver metastasis_No treatment",
+"SRR30218472"= "Pt1_female_Primary PDAC_No treatment"
+)
+
+merged_seurat$sample = merged_seurat$orig.ident
+
+merged_seurat$orig.ident <- unname(cond_map[merged_seurat$sample])
+
+merged_seurat@meta.data <- merged_seurat@meta.data %>%
+  separate(orig.ident, into = c("patient", "gender", "tissue", "treatment"), sep = "_", remove = FALSE)
+
+
+# Create metadata dataframe
+metadata <- merged_seurat@meta.data
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+# Rename columns
+metadata <- metadata %>%
+        dplyr::rename(Cond = orig.ident)
+
+# Add metadata back to Seurat object
+merged_seurat@meta.data <- metadata
+Idents(merged_seurat) <- "Cond"    
+                           
+VlnPlot(merged_seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(merged_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(merged_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+```
+
+```{r}
+library(RColorBrewer)
+library(ggplot2)
+data.filt_normed = merged_seurat
+my_colors1 <- colorRampPalette(brewer.pal(12, "Paired"))(50) ##if more than 24 colors needed
+my_colors <- c(rev(brewer.pal(n = 12, name = "Paired")),rev(brewer.pal(n = 12, name = "Set2")))
+
+
+DimPlot(data.filt_normed, reduction = "umap", group.by = "Cond", repel = FALSE, cols = my_colors1) +
+  guides(color = guide_legend(ncol = 1)) +  # Legend in 1 column
+  theme(legend.position = "right")        
+
+#see different umaps
+DimPlot(data.filt_normed, reduction = "umap", group.by = "patient", label = FALSE, repel = TRUE,cols =my_colors)
+DimPlot(data.filt_normed, reduction = "umap", group.by = "treatment", label = FALSE, repel = TRUE,cols =my_colors)
+DimPlot(data.filt_normed, reduction = "umap", group.by = "tissue", label = FALSE, repel = TRUE,cols =my_colors)
+DimPlot(data.filt_normed, reduction = "umap", group.by = "gender", label = TRUE, repel = TRUE,cols =my_colors)
+
+```
+
+## batch correction
+```{r}
+## add annotations in the original data for later correction
+## By cellline
+seuratObj_cellline <- RunHarmony(data.coding_filt_normed, "patient")
+#DimPlot(object = seuratObj, reduction = "harmony", pt.size = .1, group.by = "seq_folder",  label = TRUE, repel = TRUE )
+seuratObj_cellline <- RunUMAP(seuratObj_cellline, reduction = "harmony", dims = 1:10, verbose = F)
+
+#save(seuratObj_cellline, file=paste0("./PDAC_batchCorrected.RData"))
+
+```
+## plot of BCed data
+```{r}
+#load("./PDAC_batchCorrected.RData")
+
+DimPlot(seuratObj_cellline, reduction = "harmony", group.by = c("Cond"), label = F, repel = TRUE, cols = my_colors1)
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "Cond", label = F, repel = F,cols = my_colors1) +
+  guides(color = guide_legend(ncol = 1)) +  # Legend in 1 column
+  theme(legend.position = "right")        
+
+
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "patient", label = F, repel = F,cols = my_colors)
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "tissue", label = F, repel = F,cols = my_colors)
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "treatment", label = F, repel = F,cols = my_colors)
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "gender", label = F, repel = F,cols = my_colors)
+
+
+```
+## clustering
+```{r}
+# check graph objects
+seuratObj_cellline@graphs
+#seuratObj_cellline <- FindNeighbors(seuratObj_cellline, dims = 1:6, reduction = "pca")
+seuratObj_cellline <- FindNeighbors(seuratObj_cellline, dims = 1:10, reduction = "harmony")
+# Find clusters
+seuratObj_cellline <- FindClusters(seuratObj_cellline, resolution = 0.5) ## 0.1 very coarse, 0.5 moderate, 0.8 Fine
+# View cluster assignments
+head(Idents(seuratObj_cellline))
+# Visualize clusters
+my_colors <- c(brewer.pal(n=12, name = "Set3"),brewer.pal(n=2, name = "Set1"))
+#DimPlot(seuratObj_cellline, reduction = "pca", group.by = "seq_folder", label = F,cols = my_colors)
+DimPlot(seuratObj_cellline, reduction = "umap", group.by = "seurat_clusters", label = TRUE,cols = my_colors)
+
+
+```
+
+## cluster markers
+```{r}
+seuratObj_cellline <- JoinLayers(seuratObj_cellline) 
+# Identify marker genes for each cluster
+cluster_markers <- FindAllMarkers(seuratObj_cellline, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# View top markers for each cluster
+head(cluster_markers)
+cluster_markers$gene <- sub(".*_", "", cluster_markers$gene)
+```
+##look at cluster markers
+```{r}
+#top 10 most expressed per cluster
+top10 <- cluster_markers %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_log2FC)
+
+seuratObj_cellline <- ScaleData(seuratObj_cellline, features = unique(top10$gene))
+
+DoHeatmap(seuratObj_cellline,
+          features = unique(top10$gene),
+          group.by = "seurat_clusters",
+          cells = sample(colnames(seuratObj_cellline), 1000)) +
+  theme(axis.text.y = element_text(size = 10))
+
+```
+
+### cell annotation per cluster ---- using GPT4
+```{R}
+# IMPORTANT! Assign your OpenAI API key. See Vignette for details
+#put in your personal gpt API
+#Sys.setenv(OPENAI_API_KEY ='...')
+
+             
+#install.packages("devtools")  # if not already installed
+#install.packages("openai")
+#remotes::install_github("Winnie09/GPTCelltype")
+
+# Load packages
+library(GPTCelltype) 
+library(openai)
+# Assume you have already run the Seurat pipeline https://satijalab.org/seurat/
+# "obj" is the Seurat object; "markers" is the output from FindAllMarkers(obj)
+# Cell type annotation by GPT-4 
+res_10 <- gptcelltype(cluster_markers, model = 'gpt-4',topgenenumber = 10)
+res_20 <- gptcelltype(cluster_markers, model = 'gpt-4',topgenenumber = 20)
+res_30 <- gptcelltype(cluster_markers, model = 'gpt-4',topgenenumber = 30)
+res_40 <- gptcelltype(cluster_markers, model = 'gpt-4',topgenenumber = 40)
+# Assign cell type annotation back to Seurat object
+seuratObj_cellline@meta.data$gptcelltype_10<- as.factor(res_10[as.character(Idents(seuratObj_cellline))])
+seuratObj_cellline@meta.data$gptcelltype_20 <- as.factor(res_20[as.character(Idents(seuratObj_cellline))])
+seuratObj_cellline@meta.data$gptcelltype_30 <- as.factor(res_30[as.character(Idents(seuratObj_cellline))])
+seuratObj_cellline@meta.data$gptcelltype_40 <- as.factor(res_40[as.character(Idents(seuratObj_cellline))])
+# Visualize cell type annotation on UMAP
+my_colors <- c(rev(brewer.pal(n = 12, name = "Paired")),rev(brewer.pal(n = 12, name = "Set2")))
+DimPlot(seuratObj_cellline,group.by='gptcelltype_10', cols=my_colors)
+DimPlot(seuratObj_cellline,group.by='gptcelltype_20', cols=my_colors)
+DimPlot(seuratObj_cellline,group.by='gptcelltype_30', cols=my_colors)
+DimPlot(seuratObj_cellline,group.by='gptcelltype_40', cols=my_colors)
+seuratObj_cellline_anno = seuratObj_cellline
+saveRDS(seuratObj_cellline, file = "./PDAC_cell_annot.rds")
+saveRDS(seuratObj_cellline, file = "./0724PDAC_EM_GENEFULL_cellAno.rds")
+
+
+```
+### SingleR
+```{r}
+############################ Immune reference
+
+ref.data <- celldex::ImmGenData()
+
+# Run SingleR
+pred.sc <- SingleR(
+  test = GetAssayData(seuratObj_cellline, slot = "data"),
+  ref = ref.data,
+  labels = ref.data$label.main # Ensure the correct label column
+)
+
+seuratObj_cellline$SingleR_ImmuneGen <- pred.sc$labels
+```
+### celltype annotation per cluster ---- PANC data
+```{r}
+library(scRNAseq)
+############################ PDAC reference
+ref <- BaronPancreasData(which = "human")
+assayNames(ref)
+assay(ref, "logcounts") <- log1p(counts(ref))
+
+# Run SingleR
+pred.sc <- SingleR(
+  test = GetAssayData(seuratObj_cellline, slot = "data"),
+  ref = ref,
+  labels = ref$label # Ensure the correct label column #label.main
+)
+
+seuratObj_cellline$SingleR_Panc <- pred.sc$labels
+
+```
+### celltype annotation per cluster ---- Mouse RNA ref
+```{r}
+
+############################# Mouse RNA reference
+ref <- celldex::HumanPrimaryCellAtlasData()
+
+singleR_results <- SingleR(test = GetAssayData(seuratObj_cellline, slot = "data"),
+                           ref = ref,
+                           labels = ref$label.main)
+
+# Add annotations to Seurat metadata
+seuratObj_cellline$SingleR_mouseRNA <- singleR_results$labels
+```
+#save annotation and visualize
+```{r}
+saveRDS(seuratObj_cellline, file = "./seurat_annot.rds")
+```
+```{r}
+DimPlot(seuratObj_cellline,group.by='SingleR_ImmuneGen', cols=my_colors1)
+DimPlot(seuratObj_cellline,group.by='SingleR_mouseRNA', cols=my_colors1)
+
+DimPlot(seuratObj_cellline,group.by='gptcelltype_10', cols=my_colors)
+DimPlot(seuratObj_cellline,group.by='seurat_clusters', cols=my_colors,)
+
+seuratObj_cellline$seurat_clusters <- as.character(seuratObj_cellline$seurat_clusters)
+```
+
+##correlation matrix
+```{r}
+library(ggplot2)
+library(reshape2)
+
+seurat_obj = readRDS("seurat_annot.rds")
+repeat_class = fread("/data1/greenbab/users/nij2/ref/all_landscape_rm.csv")
+##optional, manually combining two same cell type annotations
+seurat_obj$gptcelltype_10 = trimws(seurat_obj$gptcelltype_10)
+seurat_obj$gptcelltype_10[seurat_obj$gptcelltype_10 == "Liver Cells "] <- "Liver Cells"
+DimPlot(seurat_obj,group.by='gptcelltype_10', cols=my_colors)
+
+#find repeats
+repeat_genes <- intersect(rownames(seurat_obj), repeat_class$gene.id)
+repeat_table_filtered <- repeat_class[repeat_class$gene.id %in% repeat_genes, ]
+repeat_class_list <- split(repeat_table_filtered$gene.id, repeat_table_filtered$class)
+
+# Add module scores for each repeat class
+seurat_obj <- AddModuleScore(seurat_obj, features = repeat_class_list, name = "RepeatClass")
+#rename colnames
+repeat_class_names <- names(repeat_class_list)
+score_cols <- grep("^RepeatClass[0-9]+$", colnames(seurat_obj@meta.data), value = TRUE)
+colnames(seurat_obj@meta.data)[match(score_cols, colnames(seurat_obj@meta.data))] <- repeat_class_names
+
+#repeat matrix
+# Extract repeat module score matrix: rows = repeats, columns = cells
+repeat_mat <- t(seurat_obj@meta.data[, repeat_class_names]) 
+```
+#tissue binary matrix vs. repeat module score matrix
+```{r}
+#tissue type
+meta <- seurat_obj@meta.data
+meta$cells <- colnames(seurat_obj)
+rownames(meta) <- meta$cells        # set rownames to cell names
+#create tissue binary matrix
+tissue_mat <- model.matrix(~ 0 + tissue, data = meta)
+colnames(tissue_mat) <- gsub("tissue", "", colnames(tissue_mat))  #  cleanup
+tissue_mat <- t(tissue_mat)  # now rows = tissue types, cols = cells
+#graph
+cor_mat <- cor(t(repeat_mat), t(tissue_mat), use = "pairwise.complete.obs")
+pheatmap(cor_mat, cluster_rows = TRUE, cluster_cols = TRUE)
+
+#dotplot
+cor_mat = cor_mat[c("DNA", "LINE", "SINE", "LTR", "rRNA", "Satellite", "Simple_repeat", "sRNA", "tRNA"), ]
+cor_df <- melt(cor_mat)
+colnames(cor_df) <- c("RepeatClass", "Type", "Correlation")
+
+ggplot(cor_df, aes(x = Type, y = RepeatClass, color = Correlation, size = abs(Correlation))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_classic() +
+  labs(title = "Correlation between Repeat Classes and Cell Types",
+       x = "Cell Type", y = "Repeat Class", color = "Correlation") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#vln plot 
+score_df <- seurat_obj@meta.data[, c("tissue", repeat_class_names)]
+score_long <- score_df %>%
+  pivot_longer(cols = -tissue, names_to = "RepeatClass", values_to = "ModuleScore")
+
+selected_classes <- c("DNA", "LINE", "SINE", "LTR", "rRNA", "Satellite", "Simple_repeat", "sRNA", "tRNA")
+
+score_long_filtered <- score_long %>% 
+  filter(RepeatClass %in% selected_classes)
+
+ggplot(score_long_filtered, aes(x = tissue, y = ModuleScore, fill = tissue)) +
+  geom_violin(scale = "width", trim = TRUE) +
+  facet_wrap(~ RepeatClass, scales = "free_y") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+  labs(x = "Tissue", y = "Module Score", title = "Repeat Class Expression by Tissue")
+
+ggplot(score_long_filtered, aes(x = RepeatClass, y = ModuleScore, fill = RepeatClass)) +
+  geom_violin(scale = "width", trim = TRUE) +
+  facet_wrap(~ tissue, scales = "free_y") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  labs(x = "Repeat Class", y = "Module Score", title = "Repeat Class Expression by Tissue")
+
+
+```
+
+#treatment binary matrix vs. repeat module score
+```{r}
+#create treatment binary matrix
+treatment_mat <- model.matrix(~ 0 + treatment, data = meta)
+colnames(treatment_mat) <- gsub("treatment", "", colnames(treatment_mat))  #  cleanup
+treatment_mat <- t(treatment_mat)  # now rows = tissue types, cols = cells
+#graph
+cor_mat <- cor(t(repeat_mat), t(treatment_mat), use = "pairwise.complete.obs")
+pheatmap(cor_mat, cluster_rows = TRUE, cluster_cols = TRUE)
+
+#dotplot
+cor_mat = cor_mat[c("DNA", "LINE", "SINE", "LTR", "rRNA", "Satellite", "Simple_repeat", "sRNA", "tRNA"), ]
+cor_df <- melt(cor_mat)
+colnames(cor_df) <- c("RepeatClass", "Type", "Correlation")
+
+ggplot(cor_df, aes(x = Type, y = RepeatClass, color = Correlation, size = abs(Correlation))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_classic() +
+  labs(title = "Correlation between Repeat Classes and Cell Types",
+       x = "Cell Type", y = "Repeat Class", color = "Correlation") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+#cell type binary matrix
+```{R}
+#cell type
+meta$celltype <- as.character(meta$gptcelltype_10)
+meta <- meta[!is.na(meta$gptcelltype_10), ]
+celltype_mat <- model.matrix(~ 0 + celltype, data = meta)
+colnames(celltype_mat) <- gsub("celltype", "", colnames(celltype_mat))  # optional cleanup
+celltype_mat <- t(celltype_mat)  # rows = cell types, columns = cells
+#NAs in cell type, only find common
+common_cells <- intersect(colnames(repeat_mat), colnames(celltype_mat))
+repeat_mat_aligned <- repeat_mat[, common_cells]
+celltype_mat_aligned <- celltype_mat[, common_cells]
+#graph
+cor_mat <- cor(t(repeat_mat_aligned), t(celltype_mat_aligned), use = "pairwise.complete.obs")
+pheatmap(cor_mat, cluster_rows = TRUE, cluster_cols = TRUE)
+
+
+#dotplot
+cor_mat = cor_mat[c("DNA", "LINE", "SINE", "LTR", "rRNA", "Satellite", "Simple_repeat", "sRNA", "tRNA"), ]
+cor_df <- melt(cor_mat)
+colnames(cor_df) <- c("RepeatClass", "Type", "Correlation")
+
+ggplot(cor_df, aes(x = Type, y = RepeatClass, color = Correlation, size = abs(Correlation))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_classic() +
+  labs(title = "Correlation between Repeat Classes and Cell Types",
+       x = "Cell Type", y = "Repeat Class", color = "Correlation") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+```
+
+#mat for signature genes paper provided
+```{R}
+library(readxl)
+cell_sig = read_excel("/data1/greenbab/users/nij2/ref/PDACtable9.xlsx")
+
+sig_genes <- intersect(rownames(seurat_obj), cell_sig$gene.id)
+sig_table_filtered <- cell_sig[cell_sig$gene.id %in% sig_genes, ]
+sig_class_list <- split(sig_table_filtered$gene.id, sig_table_filtered$cell)
+
+# Add module scores for each repeat class
+seurat_obj <- AddModuleScore(seurat_obj, features = sig_class_list, name = "Signature")
+#rename colnames
+sig_class_names <- names(sig_class_list)
+score_cols <- grep("^Signature[0-9]+$", colnames(seurat_obj@meta.data), value = TRUE)
+colnames(seurat_obj@meta.data)[match(score_cols, colnames(seurat_obj@meta.data))] <- sig_class_names
+
+# Extract repeat module score matrix: rows = repeats, columns = cells
+signature_mat <- t(seurat_obj@meta.data[, sig_class_names]) 
+
+cor_mat <- cor(t(repeat_mat), t(signature_mat), use = "pairwise.complete.obs")
+cor_mat = cor_mat[c("DNA", "LINE", "SINE", "LTR"), ]
+pheatmap(cor_mat, cluster_rows = TRUE, cluster_cols = TRUE)
+
+```
+#other pdac signature genes from https://www.nature.com/articles/s41467-023-36296-4
+```{r}
+markers = fread("/data1/greenbab/users/nij2/ref/cell_marker_pdac.csv")
+seurat_obj = seuratObj_cellline
+
+sig_genes <- intersect(rownames(seurat_obj), markers$gene.id)
+sig_table_filtered <- markers[markers$gene.id %in% sig_genes, ]
+sig_class_list <- split(sig_table_filtered$gene.id, sig_table_filtered$cell)
+
+# Add module scores for each repeat class
+seurat_obj <- AddModuleScore(seurat_obj, features = sig_class_list, name = "Signature")
+#rename colnames
+sig_class_names <- names(sig_class_list)
+score_cols <- grep("^Signature[0-9]+$", colnames(seurat_obj@meta.data), value = TRUE)
+colnames(seurat_obj@meta.data)[match(score_cols, colnames(seurat_obj@meta.data))] <- sig_class_names
+
+# Extract repeat module score matrix: rows = repeats, columns = cells
+signature_mat <- t(seurat_obj@meta.data[, sig_class_names]) 
+
+cor_mat <- cor(t(repeat_mat), t(signature_mat), use = "pairwise.complete.obs")
+cor_mat = cor_mat[c("DNA", "LINE", "SINE", "LTR"), ]
+pheatmap(cor_mat, cluster_rows = TRUE, cluster_cols = TRUE)
+
+saveRDS(seuratObj_cellline, file = "./0725PDAC_EM_GENEFULL_cellAno.rds")
+```
+
+
+##zoom into SINEs and LINEs
+```{r}
+library(dplyr)
+library(stringr)
+
+
+seurat_obj = readRDS("0725PDAC_EM_GENEFULL_cellAno.rds")
+gene_names <- rownames(seurat_obj)
+
+repeat_family <- sapply(gene_names, function(g) {
+  if (grepl("_LINE$", g)) {
+    return("x")  # Generic LINE family
+  } else if (grepl("^Alu[YJSM]", g)) {
+    return(sub("^([A-Za-z]+).*", "\\1", g))  # AluY, AluJ, etc.
+  } else if (grepl("^L[1-5]", g)) {
+    return(sub("^(L[1-5]).*", "\\1", g))  # L1PA2 → L1
+  } else if (grepl("^CR1", g)) {
+    return("CR1")
+  } else if (grepl("^HAL1", g)) {
+    return("HAL1")
+  } else {
+    return(NA)
+  }
+})
+
+repeat_family_df <- data.frame(
+  gene = gene_names,
+  family = repeat_family,
+  stringsAsFactors = FALSE
+)
+repeat_family_df$family <- case_when(
+  str_detect(repeat_family_df$gene, "^AluY") ~ "AluY",
+  str_detect(repeat_family_df$gene, "^AluJ") ~ "AluJ",
+  str_detect(repeat_family_df$gene, "^AluS") ~ "AluS",
+  str_detect(repeat_family_df$gene, "^AluM") ~ "AluM",
+  str_detect(repeat_family_df$gene, "^L1")   ~ "L1",
+  str_detect(repeat_family_df$gene, "^L2")   ~ "L2",
+  str_detect(repeat_family_df$gene, "^L3")   ~ "L3",
+  str_detect(repeat_family_df$gene, "^L4")   ~ "L4",
+  str_detect(repeat_family_df$gene, "^L5")   ~ "L5",
+  str_detect(repeat_family_df$gene, "^CR1")  ~ "CR1",
+  str_detect(repeat_family_df$gene, "^HAL1") ~ "HAL1",
+  str_detect(repeat_family_df$gene, "_LINE$") ~ "x",
+  TRUE ~ "other"
+)
+
+
+# Filter the full data frame to valid genes
+repeat_genes <- repeat_family_df$gene
+repeat_class_filtered <- repeat_family_df[repeat_family_df$gene %in% repeat_genes, ]
+
+# Split by subfamily
+repeat_subfamily_list <- split(repeat_class_filtered$gene, repeat_class_filtered$family)
+
+seurat_obj <- AddModuleScore(seurat_obj, features = repeat_subfamily_list, name = "RepeatSubfamily")
+
+# Rename columns for clarity
+subfamily_names <- names(repeat_subfamily_list)
+score_cols <- grep("^RepeatSubfamily[0-9]+$", colnames(seurat_obj@meta.data), value = TRUE)
+colnames(seurat_obj@meta.data)[match(score_cols, colnames(seurat_obj@meta.data))] <- subfamily_names
+
+repeat_subfam_mat <- t(seurat_obj@meta.data[, subfamily_names])
+cor_mat <- cor(t(repeat_subfam_mat), t(tissue_mat), use = "pairwise.complete.obs")
+cor_mat = cor_mat[c("AluY", "AluS", "AluJ", "L1", "L2", "L3", "L4", "L5", "HAL1", "CR1"), ]
+
+cor_df <- melt(cor_mat)
+colnames(cor_df) <- c("RepeatSubfamily", "Tissue", "Correlation")
+
+# Plot
+ggplot(cor_df, aes(x = Tissue, y = RepeatSubfamily, color = Correlation, size = abs(Correlation))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_classic() +
+  labs(title = "Correlation of Repeat Subfamily Scores with Tissue Identity",
+       x = "Tissue Type", y = "Repeat Subfamily") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Reshape module scores from wide to long
+score_long <- meta %>%
+  dplyr::select(cells, gptcelltype_10, all_of(subfamily_names)) %>%
+  pivot_longer(
+    cols = all_of(subfamily_names),
+    names_to = "RepeatSubfamily",
+    values_to = "ModuleScore"
+  )
+
+
+ggplot(score_long, aes(x = gptcelltype_10, y = ModuleScore, fill = gptcelltype_10)) +
+  geom_violin(scale = "width", trim = TRUE) +
+  facet_wrap(~ RepeatSubfamily, scales = "free_y") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "gptcelltype_10", y = "Module Score", title = "Repeat Subfamily Scores by x")
+
+
+
+##vln plot
+meta <- seurat_obj@meta.data
+meta$cells <- rownames(meta)
+
+# Reshape module scores from wide to long
+score_long <- meta %>%
+  dplyr::select(cells, gptcelltype_10, all_of(subfamily_names)) %>%
+  pivot_longer(
+    cols = all_of(subfamily_names),
+    names_to = "RepeatSubfamily",
+    values_to = "ModuleScore"
+  )
+
+# Compute median ModuleScore per cluster and subfamily
+median_scores <- score_long %>%
+  group_by(RepeatSubfamily,gptcelltype_10 ) %>%
+  summarise(median_score = median(ModuleScore), .groups = "drop")
+
+# Create a cluster ordering per subfamily
+cluster_order <- median_scores %>%
+  group_by(RepeatSubfamily) %>%
+  arrange(desc(median_score)) %>%
+  mutate(order = row_number())
+
+# Merge with main data to add order info
+score_long_ordered <- score_long %>%
+  left_join(cluster_order, by = c("RepeatSubfamily", "gptcelltype_10"))
+
+# Convert to ordered factor
+score_long_ordered$gptcelltype_10 <- factor(
+  score_long_ordered$gptcelltype_10,
+  levels = unique(score_long_ordered$gptcelltype_10[order(score_long_ordered$order)])
+)
+
+
+
+##for all
+ggplot(score_long_ordered, aes(x = gptcelltype_10, y = ModuleScore, fill = gptcelltype_10)) +
+  geom_violin(scale = "width", trim = TRUE, alpha = 0.7) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.5, color = "black") +
+  facet_wrap(~ RepeatSubfamily, scales = "free_y") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_classic(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(x = "Cluster (ordered by median score)", y = "Module Score", title = "Repeat Subfamily Scores by Cluster")
+
+
+##for each repeat
+target_repeat <- "L3"
+
+# Filter and reorder cluster levels by median
+score_filtered <- score_long_ordered %>%
+  filter(RepeatSubfamily == target_repeat) %>%
+  mutate(
+    gptcelltype_10 = factor(
+      gptcelltype_10,
+      levels = score_long_ordered %>%
+        filter(RepeatSubfamily == target_repeat) %>%
+        group_by(gptcelltype_10) %>%
+        summarize(med = median(ModuleScore, na.rm = TRUE)) %>%
+        arrange(desc(med)) %>%
+        pull(gptcelltype_10)
+    )
+  )
+# Define custom colors
+cluster_colors <- c(
+  "Fibroblasts" = "yellow", 
+  "Hepatic Stellate Cells" = "purple",  # Epithelial Cells
+  "Intestinal Epithelial Cells" = "green",  # Endothelial Cells
+  "Langerhans Cells" = "orange",  # Myeloid Cells
+  "Liver Cells" = "blue",  # Plasma Cells
+  "Muscle Cells" = "red" , 
+  "Pancreatic Cells" = "pink" , 
+  "Plasma Cells" = "brown"  
+)
+
+# Then use:
+plot = ggplot(score_filtered, aes(x = gptcelltype_10, y = ModuleScore, fill = gptcelltype_10)) +
+  geom_violin(scale = "width", trim = TRUE, alpha = 0.7) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.5, color = "black") +
+  scale_fill_manual(values = cluster_colors) +
+  theme_classic(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    x = "Cluster (ordered by median score)",
+    y = "Module Score",
+    title = paste(target_repeat, "Module Scores by Cluster")
+  )
+
+
+
+pdf("~/Downloads/AAL3.pdf", width = 3, height = 3)  
+print(plot)
+dev.off()
+
+
+
+saveRDS(seurat_obj, file = "./PDAC_moduleScores.rds")
+```
+
+#check cluster markers uniqueness for cell type anno
+```{r}
+seuratObj_cellline = readRDS("0725PDAC_EM_GENEFULL_cellAno.rds")
+cluster_marker = fread("PDAC_cluster_markers.txt")
+marker_ranked <- cluster_marker %>%
+  mutate(rank_score = -log10(p_val_adj) * abs(avg_log2FC)) %>%
+  group_by(cluster) %>%
+  arrange(desc(rank_score), .by_group = TRUE)
+# Get top 10 genes per cluster
+top10_genes <- marker_ranked %>%
+  slice_head(n = 10)
+
+seuratObj_cellline <- ScaleData(seuratObj_cellline, features = unique(top10_genes$gene))
+
+marker_genes_list <- unique(top10_genes$gene)
+
+DoHeatmap(seuratObj_cellline,
+          features = marker_genes_list,
+          group.by = "seurat_clusters",
+          cells = sample(colnames(seuratObj_cellline), 1000)) +
+  theme(axis.text.y = element_text(size = 10))
+
+
+top10 <- cluster_markers %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_log2FC)
+
+seuratObj_cellline <- ScaleData(seuratObj_cellline, features = unique(top10$gene))
+
+DoHeatmap(seuratObj_cellline,
+          features = unique(top10$gene),
+          group.by = "seurat_clusters",
+          cells = sample(colnames(seuratObj_cellline), 1000)) +
+  theme(axis.text.y = element_text(size = 10))
+
+#check specific marker
+FeaturePlot(seuratObj_cellline, features = c("ACTA2")) #cluster 0, hepatic stellate cells, no
+FeaturePlot(seuratObj_cellline, features = c("HSPH1")) #cluster 1, fibroblast, ok
+FeaturePlot(seuratObj_cellline, features = c("APOC3")) #intestinal epithelial cells, cluster 6 and 7
+FeaturePlot(seuratObj_cellline, features = c("VWF")) #cluster 5 endothelial cells not plasma cells
+FeaturePlot(seuratObj_cellline, features = c("IRF4")) #cluster 5 endothelial cells?
+FeaturePlot(seuratObj_cellline, features = c("BIN1")) #cluster 9, muscle cells, ok
+FeaturePlot(seuratObj_cellline, features = c("MKI67")) 
+
+
+
+```
+
+
+##umap showing Alu and LINE gene enrichment
+```{r}
+data_mat <- GetAssayData(seurat_obj, slot = "data")  # normalized log counts
+alu_genes <- grep("^Alu", rownames(data_mat), value = TRUE)
+alu_mat <- data_mat[alu_genes, ]
+alu_bin <- alu_mat > 0
+clusters <- Idents(seurat_obj)
+alu_gene_count_per_cell <- Matrix::colSums(alu_bin)
+df <- data.frame(
+  AluGeneCount = alu_gene_count_per_cell,
+  Cluster = clusters
+)
+ggplot(df, aes(x = Cluster, y = AluGeneCount)) +
+  geom_violin(trim = FALSE, scale = "width") +
+  theme_minimal() +
+  labs(title = "Number of Alu Genes Expressed per Cell by Cluster",
+       y = "Alu Genes Expressed", x = "Cluster")
+
+#Alu expression
+alu_genes <- grep("^Alu", rownames(seurat_obj), value = TRUE)
+alu_genes <- intersect(alu_genes, rownames(seurat_obj))
+seurat_obj <- AddModuleScore(seurat_obj, features = list(alu_genes), name = "Alu")
+
+plot = FeaturePlot(seurat_obj, features = "Alu1", cols = c("blue", "red"),  raster=FALSE) +
+  ggtitle("UMAP - Alu Gene Enrichment")
+ggsave("PDACAlu Gene Enrichment.png", plot = plot, bg = "transparent", width = 6, height = 6)
+
+seurat_alu <- subset(seurat_obj, features = alu_genes)
+
+# Identify markers for the cluster
+alu_markers <- FindMarkers(seurat_alu, ident.1 = 3, only.pos = TRUE)
+alu_markers <- alu_markers[order(alu_markers$avg_log2FC, decreasing = TRUE), ]
+head(alu_markers, 10)  # top enriched Alu genes
+
+top_alu <- rownames(alu_markers)[1:6]  # or top 10
+DotPlot(seurat_obj, features = top_alu, group.by = "seurat_clusters") + RotatedAxis()
+
+
+#L1 expression
+l1_genes <- grep("^L1", rownames(seurat_obj), value = TRUE)
+l1_genes <- intersect(l1_genes, rownames(seurat_obj))  # make sure they exist in object
+seurat_obj <- AddModuleScore(seurat_obj, features = list(l1_genes), name = "L1")
+FeaturePlot(seurat_obj, features = "L11", cols = c("lightgrey", "red"),  raster=FALSE) +
+  ggtitle("UMAP - L1 Gene Enrichment")
+
+
+
+ 
+```
+
+##percentage of Alu overall and per sample
+```{r}
+seurat_obj = readRDS("PDAC_moduleScores.rds")
+repeat_class = fread("/data1/greenbab/users/nij2/ref/all_landscape_rm.csv")
+repeat_class = repeat_class[repeat_class$class == "SINE", ]
+##whole thing
+# Identify repeat and coding genes
+repeat_genes <- repeat_class$gene.id
+all_genes <- rownames(seurat_obj)
+coding_genes <- setdiff(all_genes, repeat_genes)
+
+# Extract raw count matrix (assumes default assay is RNA and counts layer is accessible)
+counts <- LayerData(seurat_obj, layer = "counts")  # or use GetAssayData(seurat_obj, slot = "counts") in Seurat v4
+
+# Sum UMI counts across all cells
+repeat_umi <- sum(counts[intersect(repeat_genes, rownames(counts)), ])
+coding_umi <- sum(counts[intersect(coding_genes, rownames(counts)), ])
+
+# Compute percentages
+repeat_fraction <- repeat_umi / (repeat_umi + coding_umi)
+coding_fraction <- 1 - repeat_fraction
+
+# Output
+cat(sprintf("Repeat fraction (UMIs): %.2f%%\n", repeat_fraction * 100))
+cat(sprintf("Coding fraction (UMIs): %.2f%%\n", coding_fraction * 100))
+
+
+
+##per sample
+library(dplyr)
+library(ggplot2)
+
+# Extract counts
+counts <- LayerData(seurat_obj, layer = "counts")
+
+# Initialize a dataframe to store results
+sample_repeat_fraction <- data.frame()
+
+# Loop over samples
+for (sample in unique(seurat_obj$sample_id)) {
+  # Cells from this sample
+  cells <- colnames(seurat_obj)[seurat_obj$sample_id == sample]
+  
+  # Subset counts for these cells
+  counts_sample <- counts[, cells, drop = FALSE]
+  
+  # Sum repeat and coding UMIs
+  repeat_umi <- sum(counts_sample[intersect(repeat_genes, rownames(counts_sample)), ])
+  coding_umi <- sum(counts_sample[intersect(coding_genes, rownames(counts_sample)), ])
+  
+  # Compute fraction
+  repeat_fraction <- repeat_umi / (repeat_umi + coding_umi)
+  
+  # Store
+  sample_repeat_fraction <- rbind(sample_repeat_fraction,
+                                  data.frame(sample = sample, repeat_fraction = repeat_fraction))
+}
+
+
+ggplot(sample_repeat_fraction, aes(x = "", y = repeat_fraction)) +
+  geom_boxplot(outlier.shape = NA, fill = "lightblue") +
+  geom_jitter(width = 0.2, size = 2, color = "darkblue") +
+  labs(title = "Alu Fraction per Sample",
+       x = "Samples",
+       y = "Alu Gene Fraction (nCount)") +
+  theme_minimal(base_size = 14)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+```{r}
+library(gtools)
+repeat_class_names <- names(repeat_class_list)
+
+# Sum all repeat module scores per cell
+seurat_obj@meta.data$Repeat_TotalScore <- rowSums(seurat_obj@meta.data[, repeat_class_names], na.rm = TRUE)
+score_df_total <- seurat_obj@meta.data[, c("tissue", "patient", "Repeat_TotalScore")]
+
+# Convert to long format (just one column of scores)
+score_long_total <- score_df_total %>%
+  rename(ModuleScore = Repeat_TotalScore)
+
+ordered_patients <- mixedsort(unique(score_long_total$patient))
+score_long_total$patient <- factor(score_long_total$patient, levels = ordered_patients)
+
+ggplot(score_long_total, aes(x = tissue, y = ModuleScore, fill = tissue)) +
+  geom_violin(scale = "width", trim = TRUE) +
+  facet_wrap(~ patient, scales = "free_y", nrow = 1) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 9),
+    legend.position = "none"
+  ) +
+  labs(
+    x = "Tissue",
+    y = "Total Repeat Module Score",
+    title = "Total Repeat Expression per Patient by Tissue"
+  )
+
+
+score_df <- seurat_obj@meta.data[, c("tissue", "patient", repeat_class_names)]
+score_long <- score_df %>%
+  pivot_longer(cols = all_of(repeat_class_names), names_to = "RepeatClass", values_to = "ModuleScore")
+
+# Filter to desired repeat classes
+selected_classes <- c("DNA", "LINE", "SINE", "LTR", "rRNA", "Satellite", "Simple_repeat", "sRNA", "tRNA")
+score_long_filtered <- score_long %>%
+  filter(RepeatClass %in% selected_classes)
+
+
+# Violin plot per patient, faceted by tissue and colored by repeat class
+ggplot(score_long_filtered, aes(x = tissue, y = ModuleScore, fill = tissue)) +
+  geom_violin(scale = "width", trim = TRUE) +
+  facet_grid(RepeatClass ~ patient, scales = "free_y", space = "free_x") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 9),
+    legend.position = "none"
+  ) +
+  labs(x = "Tissue", y = "Module Score", title = "Repeat Class Expression per Patient by Tissue")
+
+```

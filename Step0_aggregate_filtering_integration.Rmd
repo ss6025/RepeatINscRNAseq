@@ -1,0 +1,143 @@
+```{r}
+#library(Matrix.utils)
+#library(scran)
+#library(SingleR)
+library("Matrix")
+#library("BiocManager")
+library("SeuratObject") 
+library("Seurat")
+#library(ggrepel)
+library(dplyr)
+#library(tidyverse)
+#library(patchwork)
+library(ggplot2)
+#library(DropletUtils)
+#library("stringr")
+#library("harmony")
+#library(RColorBrewer)
+#library(ggfun)
+#library(scCATCH)
+#library(scater)
+#library(pheatmap)
+#install.packages("Matrix.utils")
+library(data.table)
+```
+
+### raw-EM
+```{r}
+
+read_soloTE_samples <- function(sample_paths, project_ids = NULL) {
+ 
+  if (is.null(project_ids)) {
+    project_ids <- basename(sample_paths)
+  }
+  
+  seurat_list <- list()
+  
+  for (i in seq_along(sample_paths)) {
+  #i=6
+    sample_path <- file.path(sample_paths[i], "GeneFull/raw")
+
+    # Read matrix files
+    mtx_file <- file.path(sample_path, "UniqueAndMult-EM.mtx")
+    features_file <- file.path(sample_path, "features.tsv")
+    barcodes_file <- file.path(sample_path, "barcodes.tsv")
+
+    if (!file.exists(mtx_file) | !file.exists(features_file) | !file.exists(barcodes_file)) {
+      warning(paste("Skipping", sample_paths[i], "- missing matrix, features, or barcodes file."))
+      next
+    }
+
+    mtx <- readMM(mtx_file)
+    features <- read.table(features_file, sep = "\t", stringsAsFactors = FALSE, fill = TRUE)
+    barcodes <- read.table(barcodes_file, stringsAsFactors = FALSE)
+
+    if (nrow(features) != nrow(mtx)) {
+      warning(paste("Feature mismatch in", sample_paths[i]))
+     next
+    }
+    
+    
+    # Fix subfamily naming for repeat features
+    is_repeat <- grepl("_chr", features$V1)
+    features$V2[is_repeat] <- sub("_chr.*", "", features$V1[is_repeat])
+    
+   # Map subfamily names (assumed to be in V2)
+    rownames(mtx) <- make.unique(features$V1)  # Locus names
+    colnames(mtx) <- barcodes$V1               # Cell barcodes
+    subfamilies <- features$V2
+
+    if (length(subfamilies) != nrow(mtx)) {
+      stop("Length of subfamily labels does not match number of features.")
+    }
+
+    # Sparse aggregation by subfamily
+    grouping <- as.factor(subfamilies)
+    group_mat <- sparse.model.matrix(~ grouping + 0)
+    agg_mtx <- t(group_mat) %*% mtx  # [subfamily x cell]
+    rownames(agg_mtx) <- levels(grouping)
+    colnames(agg_mtx) <- colnames(mtx)
+
+    # Create Seurat object
+    seu <- CreateSeuratObject(counts = agg_mtx, project = project_ids[i])
+    seu$sample_id <- project_ids[i]
+# 
+#     # Mitochondrial QC & Filtering
+#     seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^MT-")
+#     seu <- subset(seu, subset =
+#      nFeature_RNA > 200 & 
+#      nFeature_RNA < 7500 &
+#      nCount_RNA > 500 &
+#      nCount_RNA < 30000 &
+#      percent.mt < 15)
+# 
+#     VlnPlot(seu, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 4) + NoLegend()
+# 
+#     # Normalize and find variable features
+#     seu <- NormalizeData(seu)
+#     seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+
+    # Store result
+    seurat_list[[project_ids[i]]] <- seu
+  }
+  
+  return(seurat_list)
+}
+
+### run the funtion to read in all files
+#annotation <- sampleMeta %>% select(sorting_strategy, condition, model, treatment)
+
+ep_list = fread("/data1/greenbab/users/nij2/PDAC_ids.txt")
+
+sample_paths <- paste0("/data1/greenbab/users/nij2/STARsolo_output_PDAC_GeneFull/",ep_list$ids,"_Solo.out")
+
+```
+
+```{r}
+# Read and store in a list
+seurat_epi <- read_soloTE_samples(sample_paths, ep_list$ids)
+combined <- merge(seurat_epi[[1]], seurat_epi[-1], add.cell.ids = names(seurat_epi))
+save(combined, file=paste0("/data1/greenbab/users/nij2/seurat/rdata/pdac/combined_seurat_GeneFullAggregated_Raw.RData"))
+
+#features <- SelectIntegrationFeatures(object.list = seurat_epi)
+#anchors <- FindIntegrationAnchors(object.list = seurat_epi, anchor.features = features)
+#combined <- IntegrateData(anchorset = anchors)
+#save(combined, file=paste0("./rdata/combined_100/raw_epi_filtered_integrated.RData"))
+```
+
+### combine immune list
+# ```{r}
+# ### immune list
+# immune_list<- annotation %>% filter(sorting_strategy == "CD45+;mKate2-;DAPI-") %>% filter(!str_detect(condition, "-sh"))
+# sample_paths <- paste0("../STARsolo_output/combined_100/",rownames(immune_list),"_Solo.out")
+# 
+# # Read and store in a list
+# seurat_immune <- read_soloTE_samples(sample_paths, rownames(immune_list))
+# combined <- merge(seurat_immune[[1]], seurat_immune[-1], add.cell.ids = names(seurat_immune))
+# save(combined, file=paste0("./rdata/combined_100/immune_filtered.RData"))
+# 
+# features <- SelectIntegrationFeatures(object.list = seurat_immune)
+# anchors <- FindIntegrationAnchors(object.list = seurat_immune, anchor.features = features)
+# combined <- IntegrateData(anchorset = anchors)
+# save(combined, file=paste0("./rdata/combined_100/immune_filtered_integrated.RData"))
+# ```
